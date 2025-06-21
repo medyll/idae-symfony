@@ -2,7 +2,6 @@
 
 namespace App\Controller;
 
-use MongoDB\Client;
 use App\Service\MongoAccessGuard;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -15,12 +14,13 @@ class DynamicMongoController extends AbstractController
     public function __construct(private MongoAccessGuard $mongoAccessGuard) {}
 
     #[Route('', name: 'dynamic_mongo_list', methods: ['GET'])]
-    public function list(string $base, string $collection, Client $mongoClient): JsonResponse
+    public function list(string $base, string $collection): JsonResponse
     {
-        if (!$this->mongoAccessGuard->isAllowed($base)) {
-            return $this->json(['error' => 'Unauthorized database for this host'], 403);
+        try {
+            $db = $this->mongoAccessGuard->getDatabase($base);
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 403);
         }
-        $db = $mongoClient->selectDatabase($base);
         $coll = $db->selectCollection($collection);
         $docs = $coll->find()->toArray();
         $data = array_map(function ($doc) {
@@ -31,12 +31,13 @@ class DynamicMongoController extends AbstractController
     }
 
     #[Route('', name: 'dynamic_mongo_create', methods: ['POST'])]
-    public function create(string $base, string $collection, Request $request, Client $mongoClient): JsonResponse
+    public function create(string $base, string $collection, Request $request): JsonResponse
     {
-        if (!$this->mongoAccessGuard->isAllowed($base)) {
-            return $this->json(['error' => 'Unauthorized database for this host'], 403);
+        try {
+            $db = $this->mongoAccessGuard->getDatabase($base);
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 403);
         }
-        $db = $mongoClient->selectDatabase($base);
         $coll = $db->selectCollection($collection);
         $data = json_decode($request->getContent(), true);
         $result = $coll->insertOne($data);
