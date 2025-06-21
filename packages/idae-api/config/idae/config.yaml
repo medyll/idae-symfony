@@ -1,0 +1,6 @@
+env:
+  parameters:
+    allowed_hosts:
+      localhost:
+        prefix: idae
+       
