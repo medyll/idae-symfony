@@ -19,26 +19,63 @@ class MongoAccessGuard
         $this->mongoClient = $mongoClient;
     }
 
-    public function isAllowed(string $base): bool
+    private function getHostFromRequest(): ?string
     {
         $request = $this->requestStack->getCurrentRequest();
-        $host = $request ? $request->getHost() : null;
-        $prefix = $host && isset($this->allowedHosts[$host]['prefix']) ? $this->allowedHosts[$host]['prefix'] : null;
-        return $prefix && strpos($base, $prefix.'_') === 0;
+        return $request ? $request->getHost() : null;
+    }
+
+    public function isAllowed(string $base): bool
+    {
+        $host = $this->getHostFromRequest();
+        printf("Checking access for host: %s, base: %s\n", $host, $base);
+        if (empty($base)) {
+            throw new \RuntimeException('Database base is not set in the request');
+        }
+        $this->prefix = $prefix =  $host && isset($this->allowedHosts[$host]['prefix']) ? $this->allowedHosts[$host]['prefix'] : null;
+        return $prefix && strpos($base, $prefix . '_') === 0;
     }
 
     public function getPrefixForHost(): ?string
     {
-        $request = $this->requestStack->getCurrentRequest();
-        $host = $request ? $request->getHost() : null;
-        return $host && isset($this->allowedHosts[$host]['prefix']) ? $this->allowedHosts[$host]['prefix'] : null;
+        $host = $this->getHostFromRequest();
+        $base = $this->requestStack->getCurrentRequest()->attributes->get('base', '');
+        $prefix = $this->allowedHosts[$host]['prefix'] ?? null;
+        if (empty($prefix)) {
+            throw new \RuntimeException('Prefix for host is not defined in the configuration file');
+        }
+        return $host && isset($this->allowedHosts[$host]['prefix']) ?  $prefix . '_' . $base : null;
     }
 
-    public function getDatabase(string $base)
+    public function getDb(): \MongoDB\Database
     {
-        if (!$this->isAllowed($base)) {
-            throw new \RuntimeException('Unauthorized database for this host');
+        $host = $this->getHostFromRequest();
+        $base = $this->requestStack->getCurrentRequest()->attributes->get('base', '');
+        var_dump($base);
+        if (empty($base)) {
+            throw new \RuntimeException('Database base is not set in the request');
         }
-        return $this->mongoClient->selectDatabase($base);
+        if (!$this->isAllowed($base)) {
+            throw new \RuntimeException("Unauthorized database $base for this host $host");
+        }
+        return $this->mongoClient->selectDatabase($this->getPrefixForHost());
+    }
+
+    public function getCollection(): \MongoDB\Collection
+    {
+        try {
+            $this->isAllowed($this->requestStack->getCurrentRequest()->attributes->get('base', ''));
+        } catch (\RuntimeException $e) {
+            throw new \RuntimeException('Unauthorized collection access: ' . $e->getMessage());
+        }
+        $db = $this->getDb();
+        $collection = $this->requestStack->getCurrentRequest()->attributes->get('collection', '');
+        try {
+            $coll = $db->selectCollection($collection);
+        } catch (\RuntimeException $e) {
+            throw new \RuntimeException('error selecting collection: ' . $e->getMessage());
+        }
+
+        return $coll;
     }
 }
