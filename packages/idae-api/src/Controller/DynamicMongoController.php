@@ -8,7 +8,6 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Attribute\Route;
-use Symfony\Component\Yaml\Yaml;
 
 #[Route('/api/{base}/{collection}')]
 class DynamicMongoController extends AbstractController
@@ -18,13 +17,12 @@ class DynamicMongoController extends AbstractController
     #[Route('', name: 'dynamic_mongo_list', methods: ['GET'])]
     public function list(string $base, string $collection, Client $mongoClient): JsonResponse
     {
-        if (!$this->mongoAccessGuard->check($base)) {
+        if (!$this->mongoAccessGuard->isAllowed($base)) {
             return $this->json(['error' => 'Unauthorized database for this host'], 403);
         }
         $db = $mongoClient->selectDatabase($base);
         $coll = $db->selectCollection($collection);
         $docs = $coll->find()->toArray();
-        // clean up _id field to string for JSON response
         $data = array_map(function ($doc) {
             $doc['_id'] = (string) $doc['_id'];
             return $doc;
@@ -35,7 +33,7 @@ class DynamicMongoController extends AbstractController
     #[Route('', name: 'dynamic_mongo_create', methods: ['POST'])]
     public function create(string $base, string $collection, Request $request, Client $mongoClient): JsonResponse
     {
-        if (!$this->mongoAccessGuard->check($base)) {
+        if (!$this->mongoAccessGuard->isAllowed($base)) {
             return $this->json(['error' => 'Unauthorized database for this host'], 403);
         }
         $db = $mongoClient->selectDatabase($base);
